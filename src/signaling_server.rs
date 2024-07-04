@@ -79,6 +79,7 @@ impl SignalingServer {
         A: ToSocketAddrs,
     {
         let server = TcpListener::bind(addr).unwrap();
+
         for stream in server.incoming() {
             let socket_manager = self.clone();
 
@@ -87,10 +88,13 @@ impl SignalingServer {
                 let (websocket, socket_id) = socket_manager.add(websocket);
 
                 loop {
-                    let mut websocket = websocket.lock().unwrap();
-                    let msg = websocket.read().unwrap();
+                    let msg = {
+                        let mut websocket = websocket.lock().unwrap();
+                        let msg = websocket.read().unwrap();
+                        msg.to_string()
+                    };
 
-                    socket_manager.handle_msg(msg.to_string(), socket_id.clone());
+                    socket_manager.handle_msg(msg, socket_id.clone());
                 }
             });
         }
