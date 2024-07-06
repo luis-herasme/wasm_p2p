@@ -1,7 +1,8 @@
-use crate::messages::{ClienMessage, ServerAnswer, ServerOffer, ID};
+use crate::messages::{ClienMessage, ServerAnswer, ServerMessage, ServerOffer, ID};
+use core::time;
 use std::net::{TcpListener, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use std::thread::spawn;
+use std::thread::{self, spawn};
 use std::{collections::HashMap, net::TcpStream};
 use tungstenite::{accept, Message, WebSocket};
 
@@ -18,10 +19,10 @@ impl SignalingServer {
     }
 
     fn add(&self, websocket: WebSocket<TcpStream>) -> (Arc<Mutex<WebSocket<TcpStream>>>, String) {
-        let mut sockets = self.sockets.lock().unwrap();
         let id = uuid::Uuid::new_v4().to_string();
-
         let websocket = Arc::new(Mutex::new(websocket));
+
+        let mut sockets = self.sockets.lock().unwrap();
         sockets.insert(id.clone(), Arc::clone(&websocket));
 
         return (websocket, id);
@@ -31,44 +32,55 @@ impl SignalingServer {
         let sockets = self.sockets.lock().unwrap();
         let destination_option = sockets.get(to);
 
+        println!("destination_option: {:?}", destination_option);
+
         if let Some(destination) = destination_option {
+            println!("destination: {:?}", destination);
             let mut destination_socket = destination.lock().unwrap();
+            println!("Sending message: {}", msg);
             destination_socket.send(msg).unwrap();
         }
     }
 
     fn handle_msg(&self, msg: String, socket_id: String) {
         if let Ok(value) = serde_json::from_str::<ClienMessage>(&msg) {
+            println!("Parsed messaged: {:?}", value);
             match value {
                 ClienMessage::Answer(answer) => {
-                    let answer = ServerAnswer {
+                    let destination_id = answer.to.clone();
+
+                    let message = ServerMessage::Answer(ServerAnswer {
                         from: socket_id,
                         to: answer.to,
                         sdp: answer.sdp,
-                        message_id: answer.message_id,
-                    };
+                    });
 
-                    let msg = Message::from(serde_json::to_string(&answer).unwrap());
-                    self.send(&answer.to, msg);
+                    let message = Message::from(serde_json::to_string(&message).unwrap());
+                    self.send(&destination_id, message);
                 }
                 ClienMessage::Offer(offer) => {
-                    let offer = ServerOffer {
+                    let detination_id = offer.to.clone();
+
+                    println!("Offer destination id: {}", detination_id);
+
+                    let message = ServerMessage::Offer(ServerOffer {
                         from: socket_id,
                         to: offer.to,
                         sdp: offer.sdp,
-                        message_id: offer.message_id,
-                    };
+                    });
 
-                    let msg = Message::from(serde_json::to_string(&offer).unwrap());
-                    self.send(&offer.to, msg);
+                    let message = Message::from(serde_json::to_string(&message).unwrap());
+                    self.send(&detination_id, message);
                 }
                 ClienMessage::GetMyID => {
-                    let message = ID {
+                    let message = ServerMessage::ID(ID {
                         id: socket_id.clone(),
-                    };
+                    });
 
-                    let msg = Message::from(serde_json::to_string(&message).unwrap());
-                    self.send(&socket_id, msg);
+                    let message =
+                        Message::from(serde_json::to_string::<ServerMessage>(&message).unwrap());
+
+                    self.send(&socket_id, message);
                 }
             };
         }
@@ -84,17 +96,30 @@ impl SignalingServer {
             let socket_manager = self.clone();
 
             spawn(move || {
+                println!("Creating new thread!");
                 let websocket = accept(stream.unwrap()).unwrap();
                 let (websocket, socket_id) = socket_manager.add(websocket);
 
                 loop {
+                    println!("Here 1");
+
                     let msg = {
+                        println!("Here 2");
                         let mut websocket = websocket.lock().unwrap();
+                        println!("Here 3");
                         let msg = websocket.read().unwrap();
+                        println!("Here 4");
                         msg.to_string()
                     };
 
+                    println!("Here 5");
+
+                    println!("Received message: {}", msg);
                     socket_manager.handle_msg(msg, socket_id.clone());
+
+                    println!("Sleeping start");
+                    thread::sleep(time::Duration::from_millis(100));
+                    println!("Sleeping end");
                 }
             });
         }
