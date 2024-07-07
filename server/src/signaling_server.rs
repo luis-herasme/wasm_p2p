@@ -35,12 +35,8 @@ impl Sockets {
         let sockets = self.sockets.lock().await;
         let destination_option = sockets.get(to);
 
-        println!("destination_option: {:?}", destination_option);
-
         if let Some(destination) = destination_option {
-            println!("destination: {:?}", destination);
             let mut destination_socket = destination.lock().await;
-            println!("Sending message: {}", msg);
             destination_socket.send(msg).await.unwrap();
         }
     }
@@ -75,7 +71,6 @@ async fn handle_connection(sockets: Arc<Mutex<Sockets>>, stream: TcpStream) {
 
 async fn handle_msg(msg: String, socket_id: String, sockets: Arc<Mutex<Sockets>>) {
     if let Ok(value) = serde_json::from_str::<ClientMessage>(&msg) {
-        println!("Parsed messaged: {:?}", value);
 
         match value {
             ClientMessage::Answer(answer) => {
@@ -92,8 +87,6 @@ async fn handle_msg(msg: String, socket_id: String, sockets: Arc<Mutex<Sockets>>
             }
             ClientMessage::Offer(offer) => {
                 let detination_id = offer.to.clone();
-
-                println!("Offer destination id: {}", detination_id);
 
                 let message = ServerMessage::Offer(ServerOffer {
                     from: socket_id,
