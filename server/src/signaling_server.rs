@@ -1,127 +1,119 @@
-use crate::messages::{ClienMessage, ServerAnswer, ServerMessage, ServerOffer, ID};
-use core::time;
-use std::net::{TcpListener, ToSocketAddrs};
-use std::sync::{Arc, Mutex};
-use std::thread::{self, spawn};
-use std::{collections::HashMap, net::TcpStream};
-use tungstenite::{accept, Message, WebSocket};
+use crate::messages::{ClientMessage, ServerAnswer, ServerMessage, ServerOffer, ID};
+use futures_util::lock::Mutex;
+use futures_util::stream::{SplitSink, SplitStream};
+use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
 
-#[derive(Clone)]
-pub struct SignalingServer {
-    sockets: Arc<Mutex<HashMap<String, Arc<Mutex<WebSocket<TcpStream>>>>>>,
+pub struct Sockets {
+    sockets:
+        Arc<Mutex<HashMap<String, Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>>>>,
 }
 
-impl SignalingServer {
-    pub fn new() -> Self {
-        Self {
+impl Sockets {
+    pub fn new() -> Arc<Mutex<Sockets>> {
+        Arc::new(Mutex::new(Self {
             sockets: Arc::new(Mutex::new(HashMap::new())),
-        }
+        }))
     }
 
-    fn add(&self, websocket: WebSocket<TcpStream>) -> (Arc<Mutex<WebSocket<TcpStream>>>, String) {
+    async fn add(
+        &self,
+        stream: WebSocketStream<TcpStream>,
+    ) -> (SplitStream<WebSocketStream<TcpStream>>, String) {
         let id = uuid::Uuid::new_v4().to_string();
-        let websocket = Arc::new(Mutex::new(websocket));
-
-        let mut sockets = self.sockets.lock().unwrap();
-        sockets.insert(id.clone(), Arc::clone(&websocket));
-
-        return (websocket, id);
+        let (write, read) = stream.split();
+        let write = Arc::new(Mutex::new(write));
+        self.sockets.lock().await.insert(id.clone(), write);
+        return (read, id);
     }
 
-    fn send(&self, to: &str, msg: Message) {
-        let sockets = self.sockets.lock().unwrap();
+    async fn send(&self, to: &str, msg: Message) {
+        let sockets = self.sockets.lock().await;
         let destination_option = sockets.get(to);
 
         println!("destination_option: {:?}", destination_option);
 
         if let Some(destination) = destination_option {
             println!("destination: {:?}", destination);
-            let mut destination_socket = destination.lock().unwrap();
+            let mut destination_socket = destination.lock().await;
             println!("Sending message: {}", msg);
-            destination_socket.send(msg).unwrap();
+            destination_socket.send(msg).await.unwrap();
         }
     }
+}
 
-    fn handle_msg(&self, msg: String, socket_id: String) {
-        if let Ok(value) = serde_json::from_str::<ClienMessage>(&msg) {
-            println!("Parsed messaged: {:?}", value);
-            match value {
-                ClienMessage::Answer(answer) => {
-                    let destination_id = answer.to.clone();
+pub async fn init<A>(addr: A)
+where
+    A: ToSocketAddrs,
+{
+    let listener = TcpListener::bind(&addr).await.unwrap();
+    let sockets = Sockets::new();
 
-                    let message = ServerMessage::Answer(ServerAnswer {
-                        from: socket_id,
-                        to: answer.to,
-                        sdp: answer.sdp,
-                    });
-
-                    let message = Message::from(serde_json::to_string(&message).unwrap());
-                    self.send(&destination_id, message);
-                }
-                ClienMessage::Offer(offer) => {
-                    let detination_id = offer.to.clone();
-
-                    println!("Offer destination id: {}", detination_id);
-
-                    let message = ServerMessage::Offer(ServerOffer {
-                        from: socket_id,
-                        to: offer.to,
-                        sdp: offer.sdp,
-                    });
-
-                    let message = Message::from(serde_json::to_string(&message).unwrap());
-                    self.send(&detination_id, message);
-                }
-                ClienMessage::GetMyID => {
-                    let message = ServerMessage::ID(ID {
-                        id: socket_id.clone(),
-                    });
-
-                    let message =
-                        Message::from(serde_json::to_string::<ServerMessage>(&message).unwrap());
-
-                    self.send(&socket_id, message);
-                }
-            };
-        }
+    while let Ok((stream, _)) = listener.accept().await {
+        let sockets = Arc::clone(&sockets);
+        tokio::spawn(handle_connection(sockets, stream));
     }
+}
 
-    pub fn init<A>(self, addr: A)
-    where
-        A: ToSocketAddrs,
-    {
-        let server = TcpListener::bind(addr).unwrap();
+async fn handle_connection(sockets: Arc<Mutex<Sockets>>, stream: TcpStream) {
+    let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
 
-        for stream in server.incoming() {
-            let socket_manager = self.clone();
+    let (mut read, id) = {
+        let sockets = sockets.lock().await;
+        sockets.add(stream).await
+    };
 
-            spawn(move || {
-                println!("Creating new thread!");
-                let websocket = accept(stream.unwrap()).unwrap();
-                let (websocket, socket_id) = socket_manager.add(websocket);
+    while let Some(Ok(message)) = read.next().await {
+        let sockets = Arc::clone(&sockets);
+        handle_msg(message.to_string(), id.clone(), sockets).await;
+    }
+}
 
-                loop {
-                    println!("Here 1");
+async fn handle_msg(msg: String, socket_id: String, sockets: Arc<Mutex<Sockets>>) {
+    if let Ok(value) = serde_json::from_str::<ClientMessage>(&msg) {
+        println!("Parsed messaged: {:?}", value);
 
-                    let msg = {
-                        println!("Here 2");
-                        let mut websocket = websocket.lock().unwrap();
-                        println!("Here 3");
-                        let msg = websocket.read().unwrap();
-                        println!("Here 4");
-                        msg.to_string()
-                    };
+        match value {
+            ClientMessage::Answer(answer) => {
+                let destination_id = answer.to.clone();
 
-                    println!("Here 5");
+                let message = ServerMessage::Answer(ServerAnswer {
+                    from: socket_id,
+                    to: answer.to,
+                    sdp: answer.sdp,
+                });
 
-                    println!("Received message: {}", msg);
-                    socket_manager.handle_msg(msg, socket_id.clone());
+                let message = Message::from(serde_json::to_string(&message).unwrap());
+                sockets.lock().await.send(&destination_id, message).await;
+            }
+            ClientMessage::Offer(offer) => {
+                let detination_id = offer.to.clone();
 
-                    println!("Sleeping start");
-                    thread::sleep(time::Duration::from_millis(100));
-                    println!("Sleeping end");
-                }
-            });
-        }
+                println!("Offer destination id: {}", detination_id);
+
+                let message = ServerMessage::Offer(ServerOffer {
+                    from: socket_id,
+                    to: offer.to,
+                    sdp: offer.sdp,
+                });
+
+                let message = Message::from(serde_json::to_string(&message).unwrap());
+                sockets.lock().await.send(&detination_id, message).await;
+            }
+            ClientMessage::GetMyID => {
+                let message = ServerMessage::ID(ID {
+                    id: socket_id.clone(),
+                });
+
+                let message =
+                    Message::from(serde_json::to_string::<ServerMessage>(&message).unwrap());
+
+                sockets.lock().await.send(&socket_id, message).await;
+            }
+        };
     }
 }

@@ -14,7 +14,7 @@ pub struct ClientAnswer {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
-pub enum ClienMessage {
+pub enum ClientMessage {
     Answer(ClientAnswer),
     Offer(ClientOffer),
     GetMyID,

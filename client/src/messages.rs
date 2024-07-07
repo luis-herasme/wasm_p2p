@@ -25,7 +25,6 @@ pub struct ServerOffer {
     pub from: String,
     pub to: String,
     pub sdp: String,
-    pub message_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,7 +32,6 @@ pub struct ServerAnswer {
     pub from: String,
     pub to: String,
     pub sdp: String,
-    pub message_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
