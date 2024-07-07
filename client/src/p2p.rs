@@ -24,6 +24,7 @@ struct P2PInner {
     peer_messages: Vec<(String, String)>,
     signaling_messages: Vec<String>,
     connections: HashMap<String, RtcPeerConnection>,
+    channels: HashMap<String, RtcDataChannel>,
 }
 
 pub struct P2P {
@@ -31,6 +32,15 @@ pub struct P2P {
 }
 
 impl P2P {
+    pub fn send(&self, other_peer_id: &str, data: &str) {
+        let inner = self.inner.borrow();
+        let other_peer_channel = inner.channels.get(other_peer_id);
+
+        if let Some(channel) = other_peer_channel {
+            channel.send_with_str(data).unwrap();
+        }
+    }
+
     pub fn new(url: &str) -> Self {
         let inner = P2PInner {
             socket: WebSocket::new(url).unwrap(),
@@ -39,6 +49,7 @@ impl P2P {
             peer_messages: Vec::new(),
             connections: HashMap::new(),
             signaling_messages: Vec::new(),
+            channels: HashMap::new(),
         };
 
         let mut p2p = P2P {
@@ -294,4 +305,9 @@ fn setup_channel(p2p_inner: Rc<RefCell<P2PInner>>, channel: RtcDataChannel, peer
     on_message.forget();
     on_open.forget();
     on_close.forget();
+
+    p2p_inner
+        .borrow_mut()
+        .channels
+        .insert(peer_id.clone(), channel.clone());
 }
