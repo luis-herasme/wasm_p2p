@@ -41,6 +41,15 @@ impl P2P {
         }
     }
 
+    pub fn send_u8_array(&self, other_peer_id: &str, data: &[u8]) {
+        let inner = self.inner.borrow();
+        let other_peer_channel = inner.channels.get(other_peer_id);
+
+        if let Some(channel) = other_peer_channel {
+            channel.send_with_u8_array(data).unwrap();
+        }
+    }
+
     pub fn new(url: &str) -> Self {
         let inner = P2PInner {
             socket: WebSocket::new(url).unwrap(),
@@ -56,9 +65,54 @@ impl P2P {
             inner: Rc::new(RefCell::new(inner)),
         };
 
-        p2p.init_socket();
+        p2p.listen_to_signaling_messages();
 
         return p2p;
+    }
+
+    fn listen_to_signaling_messages(&mut self) {
+        let p2p_inner = Rc::clone(&self.inner);
+
+        let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
+            let message = message.data().as_string().unwrap();
+            p2p_inner.borrow_mut().signaling_messages.push(message);
+        });
+
+        self.inner
+            .borrow_mut()
+            .socket
+            .set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+
+        on_message.forget();
+    }
+
+    pub async fn update(&mut self) -> (IntoIter<(String, String)>, IntoIter<ConnectionUpdate>) {
+        delay(1).await;
+        self.update_signaling().await;
+        let messages = self.messages();
+        let connection_updates = self.connection_updates();
+        return (messages, connection_updates);
+    }
+
+    async fn update_signaling(&self) {
+        let messages =
+            std::mem::replace(&mut self.inner.borrow_mut().signaling_messages, Vec::new());
+
+        for message in messages.into_iter() {
+            if let Ok(value) = serde_json::from_str::<ServerMessage>(&message) {
+                match value {
+                    ServerMessage::ID(data) => {
+                        self.inner.borrow_mut().id = Some(data.id);
+                    }
+                    ServerMessage::Offer(offer) => {
+                        self.handle_offer(offer).await;
+                    }
+                    ServerMessage::Answer(answer) => {
+                        self.handle_answer(answer).await;
+                    }
+                }
+            }
+        }
     }
 
     async fn handle_offer(&self, offer: ServerOffer) {
@@ -117,49 +171,13 @@ impl P2P {
         on_data_channel.forget();
     }
 
-    pub async fn update(&mut self) -> (IntoIter<(String, String)>, IntoIter<ConnectionUpdate>) {
-        delay(1).await;
-        self.update_signaling().await;
-        let messages = self.messages();
-        let connection_updates = self.connection_updates();
-        return (messages, connection_updates);
-    }
-
-    async fn update_signaling(&self) {
-        let messages =
-            std::mem::replace(&mut self.inner.borrow_mut().signaling_messages, Vec::new());
-
-        for message in messages.into_iter() {
-            if let Ok(value) = serde_json::from_str::<ServerMessage>(&message) {
-                match value {
-                    ServerMessage::ID(data) => {
-                        self.inner.borrow_mut().id = Some(data.id);
-                    }
-                    ServerMessage::Offer(offer) => {
-                        self.handle_offer(offer).await;
-                    }
-                    ServerMessage::Answer(answer) => {
-                        self.handle_answer(answer).await;
-                    }
-                }
-            }
+    async fn handle_answer(&self, answer: ServerAnswer) {
+        if let Some(connection) = self.inner.borrow().connections.get(&answer.from) {
+            let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
+            session_description.sdp(&answer.sdp);
+            let set_remote_description = connection.set_remote_description(&session_description);
+            JsFuture::from(set_remote_description).await.unwrap();
         }
-    }
-
-    fn init_socket(&mut self) {
-        let p2p_inner = Rc::clone(&self.inner);
-
-        let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-            let message = message.data().as_string().unwrap();
-            p2p_inner.borrow_mut().signaling_messages.push(message);
-        });
-
-        self.inner
-            .borrow_mut()
-            .socket
-            .set_onmessage(Some(on_message.as_ref().unchecked_ref()));
-
-        on_message.forget();
     }
 
     fn messages(&mut self) -> IntoIter<(String, String)> {
@@ -200,15 +218,6 @@ impl P2P {
             }
 
             delay(1).await;
-        }
-    }
-
-    async fn handle_answer(&self, answer: ServerAnswer) {
-        if let Some(connection) = self.inner.borrow().connections.get(&answer.from) {
-            let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
-            session_description.sdp(&answer.sdp);
-            let set_remote_description = connection.set_remote_description(&session_description);
-            JsFuture::from(set_remote_description).await.unwrap();
         }
     }
 
@@ -297,7 +306,7 @@ fn setup_channel(p2p_inner: Rc<RefCell<P2PInner>>, channel: RtcDataChannel, peer
         ));
     });
 
-    // Channel setup
+    // Adds event listeners to channel
     channel.set_onopen(Some(on_open.as_ref().unchecked_ref()));
     channel.set_onclose(Some(on_close.as_ref().unchecked_ref()));
     channel.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
