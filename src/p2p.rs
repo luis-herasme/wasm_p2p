@@ -1,8 +1,8 @@
 use crate::{
-    delay,
     messages::{
         ClientAnswer, ClientMessage, ClientOffer, ServerAnswer, ServerMessage, ServerOffer,
     },
+    utils::sleep,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, vec::IntoIter};
 use wasm_bindgen::prelude::*;
@@ -87,7 +87,7 @@ impl P2P {
     }
 
     pub async fn update(&mut self) -> (IntoIter<(String, String)>, IntoIter<ConnectionUpdate>) {
-        delay(1).await;
+        sleep(1).await;
         self.update_signaling().await;
         let messages = self.messages();
         let connection_updates = self.connection_updates();
@@ -144,7 +144,7 @@ impl P2P {
                 break;
             }
 
-            delay(1).await;
+            sleep(1).await;
         }
 
         // Send answer
@@ -204,7 +204,7 @@ impl P2P {
                 break;
             }
 
-            delay(1).await;
+            sleep(1).await;
         }
 
         let message = serde_json::to_string(&ClientMessage::GetMyID).unwrap();
@@ -217,7 +217,7 @@ impl P2P {
                 return id.to_string();
             }
 
-            delay(1).await;
+            sleep(1).await;
         }
     }
 
@@ -241,7 +241,7 @@ impl P2P {
                 break;
             }
 
-            delay(1).await;
+            sleep(1).await;
         }
 
         let message = serde_json::to_string(&ClientMessage::Offer(ClientOffer {

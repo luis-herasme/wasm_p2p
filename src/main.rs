@@ -4,17 +4,13 @@ use wasm_bindgen::prelude::*;
 mod console_log;
 mod messages;
 mod p2p;
+mod utils;
 
 #[wasm_bindgen]
 extern "C" {
     pub fn alert(value: &str);
     pub fn prompt(value: &str) -> JsValue;
     pub fn confirm(value: &str) -> JsValue;
-}
-
-#[wasm_bindgen(module = "/src/utils.js")]
-extern "C" {
-    pub async fn delay(delay_ms: u32);
 }
 
 fn main() {
