@@ -1,7 +1,11 @@
 [package]
-name = "client"
+name = "p2p"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+name = "p2p"
+path = "src/lib.rs"
 
 [dependencies]
 console_error_panic_hook = "0.1.7"

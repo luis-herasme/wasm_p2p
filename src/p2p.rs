@@ -27,6 +27,7 @@ struct P2PInner {
     channels: HashMap<String, RtcDataChannel>,
 }
 
+#[derive(Clone)]
 pub struct P2P {
     inner: Rc<RefCell<P2PInner>>,
 }
@@ -95,10 +96,10 @@ impl P2P {
     }
 
     async fn update_signaling(&self) {
-        let messages =
+        let signaling_messages =
             std::mem::replace(&mut self.inner.borrow_mut().signaling_messages, Vec::new());
 
-        for message in messages.into_iter() {
+        for message in signaling_messages.into_iter() {
             if let Ok(value) = serde_json::from_str::<ServerMessage>(&message) {
                 match value {
                     ServerMessage::ID(data) => {
