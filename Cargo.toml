@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Simple peer-to-peer library for Rust + WASM, built on top of WebRTC"
 license = "MIT"
+repository = "https://github.com/luis-herasme/wasm_p2p/"
 
 [lib]
 name = "wasm_p2p"
