@@ -1,12 +1,12 @@
 [package]
-name = "p2p"
+name = "wasm_p2p"
 version = "0.1.0"
 edition = "2021"
 description = "Simple peer-to-peer library for Rust + WASM, built on top of WebRTC"
 license = "MIT"
 
 [lib]
-name = "p2p"
+name = "wasm_p2p"
 path = "src/lib.rs"
 
 [dependencies]
