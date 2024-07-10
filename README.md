@@ -10,3 +10,6 @@
 </div>
 <br/>
 </div>
+
+## Introduction
+This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC.
