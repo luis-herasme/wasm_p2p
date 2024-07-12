@@ -1,4 +1,4 @@
-pub use p2p::{ConnectionUpdate, P2P};
+pub use p2p::{ConnectionUpdate, IceServer, P2P};
 pub use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_futures;
 pub mod console_log;

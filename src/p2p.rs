@@ -33,10 +33,10 @@ struct P2PInner {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IceServer {
-    urls: String,
-    credential: Option<String>,
-    credential_type: Option<String>,
-    username: Option<String>,
+    pub urls: String,
+    pub credential: Option<String>,
+    pub credential_type: Option<String>,
+    pub username: Option<String>,
 }
 
 #[derive(Clone)]
