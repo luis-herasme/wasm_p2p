@@ -113,7 +113,7 @@ impl P2P {
     }
 
     pub async fn update(&mut self) -> (IntoIter<(String, String)>, IntoIter<ConnectionUpdate>) {
-        sleep(1).await;
+        sleep(0).await;
         self.update_signaling().await;
         let messages = self.messages();
         let connection_updates = self.connection_updates();
