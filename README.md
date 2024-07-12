@@ -19,3 +19,38 @@ This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC.
 ```bash
 cargo add wasm_p2p
 ```
+
+## Usage
+```Rust
+use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P};
+
+fn main() {
+    wasm_bindgen_futures::spawn_local(init());
+}
+
+async fn init() {
+    let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+
+    let id = p2p.id().await;
+    println!("Your id is {}", id);
+
+    loop {
+        let (messages, connections) = p2p.update().await;
+
+        for connection in connections {
+            match connection {
+                ConnectionUpdate::Connected(peer_id) => {
+                    println!("Peer {} connected", peer_id);
+                }
+                ConnectionUpdate::Disconnected(peer_id) => {
+                    println!("Peer {} disconnected", peer_id);
+                }
+            }
+        }
+
+        for (peer_id, message) in messages {
+            println!("{}: {}", peer_id, message);
+        }
+    }
+}
+```
