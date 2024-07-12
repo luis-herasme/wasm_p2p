@@ -4,12 +4,14 @@ use crate::{
     },
     utils::sleep,
 };
+use serde;
+use serde::Serialize;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, vec::IntoIter};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    js_sys::Reflect, MessageEvent, RtcDataChannel, RtcDataChannelEvent, RtcIceGatheringState,
-    RtcPeerConnection, RtcSdpType, RtcSessionDescriptionInit, WebSocket,
+    js_sys::Reflect, MessageEvent, RtcConfiguration, RtcDataChannel, RtcDataChannelEvent,
+    RtcIceGatheringState, RtcPeerConnection, RtcSdpType, RtcSessionDescriptionInit, WebSocket,
 };
 
 pub enum ConnectionUpdate {
@@ -25,6 +27,16 @@ struct P2PInner {
     signaling_messages: Vec<String>,
     connections: HashMap<String, RtcPeerConnection>,
     channels: HashMap<String, RtcDataChannel>,
+    ice_servers: Vec<IceServer>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IceServer {
+    urls: String,
+    credential: Option<String>,
+    credential_type: Option<String>,
+    username: Option<String>,
 }
 
 #[derive(Clone)]
@@ -33,6 +45,11 @@ pub struct P2P {
 }
 
 impl P2P {
+    pub fn set_ice_servers(&self, ice_servers: Vec<IceServer>) {
+        let mut inner = self.inner.borrow_mut();
+        inner.ice_servers = ice_servers;
+    }
+
     pub fn send(&self, other_peer_id: &str, data: &str) {
         let inner = self.inner.borrow();
         let other_peer_channel = inner.channels.get(other_peer_id);
@@ -52,6 +69,13 @@ impl P2P {
     }
 
     pub fn new(url: &str) -> Self {
+        let ice_servers: Vec<IceServer> = vec![IceServer {
+            urls: String::from("stun:stun.l.google.com:19302"),
+            credential: None,
+            credential_type: None,
+            username: None,
+        }];
+
         let inner = P2PInner {
             socket: WebSocket::new(url).unwrap(),
             id: None,
@@ -60,6 +84,7 @@ impl P2P {
             connections: HashMap::new(),
             signaling_messages: Vec::new(),
             channels: HashMap::new(),
+            ice_servers,
         };
 
         let mut p2p = P2P {
@@ -116,8 +141,16 @@ impl P2P {
         }
     }
 
+    fn create_connection(&self) -> RtcPeerConnection {
+        let mut config = RtcConfiguration::new();
+        let config = config
+            .ice_servers(&serde_wasm_bindgen::to_value(&self.inner.borrow().ice_servers).unwrap());
+        let connection = RtcPeerConnection::new_with_configuration(&config).unwrap();
+        return connection;
+    }
+
     async fn handle_offer(&self, offer: ServerOffer) {
-        let connection = RtcPeerConnection::new().unwrap();
+        let connection = self.create_connection();
 
         // Remote description
         let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
@@ -259,7 +292,7 @@ impl P2P {
     }
 
     pub async fn connect(&mut self, peer_id: &str) {
-        let connection = RtcPeerConnection::new().unwrap();
+        let connection = self.create_connection();
         let channel = connection.create_data_channel("channel");
         setup_channel(Rc::clone(&self.inner), channel, peer_id.to_string());
 
