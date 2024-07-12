@@ -1,5 +1,5 @@
 <div align="center">
-    <h1>wasm_p2p</h1>
+    <h1>WASM P2P</h1>
     <big>Simple peer-to-peer library for Rust + WASM, built on top of WebRTC</big>
     <div>
     <br/>
