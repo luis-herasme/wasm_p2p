@@ -21,6 +21,23 @@ cargo add wasm_p2p
 ```
 
 ## Usage
+
+### Setup
+To establish a peer-to-peer connection, we need to send information like our IP address to the other peer so that it knows how to reach us. The server that we use to exchange this information is called a signaling server.
+
+To initialize the `P2P` client, you need to pass the URL of the signaling server:
+```Rust
+let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+```
+
+In the previous example, we used `wss://signaling.luisherasme.com` as the signaling server. This server is free, and the code is open source so that you can create your own version. The code is available [here](https://github.com/luis-herasme/signaling-server.rs).
+
+### Peer ID
+The signaling server assigns a random, unique ID to each peer. You can retrieve your ID by calling the following function:
+```Rust
+let id = p2p.id().await;
+```
+
 ```Rust
 use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P};
 
@@ -54,16 +71,6 @@ async fn init() {
     }
 }
 ```
-
-To establish a peer-to-peer connection, we need to send information like our IP address to the other peer so that it knows how to reach us. The server that we use to exchange this information is called a signaling server.
-
-To initialize the `P2P` client, you need to pass the URL of the signaling server:
-```Rust
-let mut p2p = P2P::new("wss://signaling.luisherasme.com");
-```
-
-In the previous example, we used 'wss://signaling.luisherasme.com' as the signaling server. This server is free, and the code is open source so that you can create your own version. The code is available [here](https://github.com/luis-herasme/signaling-server.rs).
-
 
 ### Custom ICE Servers
 
