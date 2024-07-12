@@ -54,6 +54,28 @@ async fn init() {
     }
 }
 ```
+### Custom ICE Servers
 
-### Examples
+```Rust
+use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P, IceServer};
+
+fn main() {
+    wasm_bindgen_futures::spawn_local(init());
+}
+
+async fn init() {
+    let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+
+    let ice_servers = vec![IceServer {
+        urls: String::from("stun:stun.l.google.com:19302"),
+        credential: None,
+        credential_type: None,
+        username: None,
+    }];
+
+    p2p.set_ice_servers(ice_servers);
+}
+```
+
+## Examples
 - P2P chat. [Demo](https://p2pexample.luisherasme.com/), [Repository](https://github.com/luis-herasme/p2p-example).
