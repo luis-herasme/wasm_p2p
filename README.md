@@ -12,8 +12,40 @@
 </div>
 
 ## Introduction
-This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC.
+This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC. This library is very easy to use. In the following example, we will connect to another peer and send it "Hello":
+```Rust
+use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P};
 
+fn main() {
+    wasm_bindgen_futures::spawn_local(init());
+}
+
+async fn init() {
+    let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+    p2p.connect("OTHER_PEER_ID").await;
+
+    loop {
+        let (messages, connections) = p2p.update().await;
+
+        for connection in connections {
+            match connection {
+                ConnectionUpdate::Connected(peer_id) => {
+                    println!("Peer {} connected", peer_id);
+                    p2p.send(&peer_id, "Hello");
+                    
+                }
+                ConnectionUpdate::Disconnected(peer_id) => {
+                    println!("Peer {} disconnected", peer_id);
+                }
+            }
+        }
+
+        for (peer_id, message) in messages {
+            println!("{}: {}", peer_id, message);
+        }
+    }
+}
+```
 ## Installation
 
 ```bash
@@ -32,25 +64,25 @@ let mut p2p = P2P::new("wss://signaling.luisherasme.com");
 
 In the previous example, we used `wss://signaling.luisherasme.com` as the signaling server. This server is free, and the code is open source so that you can create your own version. The code is available [here](https://github.com/luis-herasme/signaling-server.rs).
 
-### Peer ID
+#### Peer ID
 The signaling server assigns a random, unique ID to each peer. You can retrieve your ID by calling the following function:
 ```Rust
 let id = p2p.id().await;
 ```
-### Receive meesages
+#### Receive meesages
 To receive messages from the other peers that are connected to you, you can call the update method:
 ```Rust
 let (messages, connections) = p2p.update().await;
 ```
 
-### Send message
+#### Send message
 To send a message to another peer you have to use the `send` method:
 ```Rust
 let data = "EXAMPLE DATA YOU CAN SEND ANY &STR";
 p2p.send("OTHER_PEER_ID", data);
 ```
 
-### Connections
+#### Connections
 You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
 ```Rust
 p2p.connect("OTHER_PEER_ID").await;
@@ -71,7 +103,7 @@ for connection in connections {
 }
 ```
 
-### Custom ICE Servers
+#### Custom ICE Servers
 
 ```Rust
 use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P, IceServer};
