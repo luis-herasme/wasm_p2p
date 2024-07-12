@@ -54,3 +54,6 @@ async fn init() {
     }
 }
 ```
+
+### Examples
+- P2P chat. [Demo](https://github.com/luis-herasme/p2p-example), [Repository](https://github.com/luis-herasme/p2p-example).
