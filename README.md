@@ -37,36 +37,35 @@ The signaling server assigns a random, unique ID to each peer. You can retrieve 
 ```Rust
 let id = p2p.id().await;
 ```
-
+### Receive meesages
+To receive messages from the other peers that are connected to you, you can call the update method:
 ```Rust
-use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P};
+let (messages, connections) = p2p.update().await;
+```
 
-fn main() {
-    wasm_bindgen_futures::spawn_local(init());
-}
+### Send message
+To send a message to another peer you have to use the `send` method:
+```Rust
+let data = "EXAMPLE DATA YOU CAN SEND ANY &STR";
+p2p.send("OTHER_PEER_ID", data);
+```
 
-async fn init() {
-    let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+### Connections
+You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
+```Rust
+p2p.connect("OTHER_PEER_ID").await;
+```
+Inspect the connection array received in the update function to check for a new peer connection.
+```Rust
+let (messages, connections) = p2p.update().await;
 
-    let id = p2p.id().await;
-    println!("Your id is {}", id);
-
-    loop {
-        let (messages, connections) = p2p.update().await;
-
-        for connection in connections {
-            match connection {
-                ConnectionUpdate::Connected(peer_id) => {
-                    println!("Peer {} connected", peer_id);
-                }
-                ConnectionUpdate::Disconnected(peer_id) => {
-                    println!("Peer {} disconnected", peer_id);
-                }
-            }
+for connection in connections {
+    match connection {
+        ConnectionUpdate::Connected(peer_id) => {
+            println!("Peer {} connected", peer_id);
         }
-
-        for (peer_id, message) in messages {
-            println!("{}: {}", peer_id, message);
+        ConnectionUpdate::Disconnected(peer_id) => {
+            println!("Peer {} disconnected", peer_id);
         }
     }
 }
