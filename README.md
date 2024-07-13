@@ -14,7 +14,7 @@
 ## Introduction
 This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC. In the following example, we will connect to another peer and send it "Hello":
 ```Rust
-use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P};
+use wasm_p2p::{wasm_bindgen_futures, P2P};
 
 fn main() {
     wasm_bindgen_futures::spawn_local(main_async());
