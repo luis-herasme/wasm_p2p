@@ -39,15 +39,15 @@ To establish a peer-to-peer connection, we need to send information like our IP 
 
 To initialize the `P2P` client, you need to pass the URL of the signaling server:
 ```Rust
-let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+let mut p2p = P2P::new("wss://signaling.luisherasme.com").await;
 ```
 
 In the previous example, we used `wss://signaling.luisherasme.com` as the signaling server. This server is free, and the code is open source so that you can create your own version. The code is available [here](https://github.com/luis-herasme/signaling-server.rs).
 
 #### Peer ID
-The signaling server assigns a random, unique ID to each peer. You can retrieve your ID by calling the following function:
+The signaling server assigns a random, unique ID to each peer:
 ```Rust
-let id = p2p.id().await;
+let id = p2p.id;
 ```
 #### Receive meesages
 To receive messages from the other peers that are connected to you, you can call the update method:
@@ -59,13 +59,13 @@ let (messages, connections) = p2p.update().await;
 To send a message to another peer you have to use the `send` method:
 ```Rust
 let data = "EXAMPLE DATA YOU CAN SEND ANY &STR";
-p2p.send("OTHER_PEER_ID", data);
+peer.send(data);
 ```
 
 #### Connections
 You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
 ```Rust
-p2p.connect("OTHER_PEER_ID").await;
+let peer = p2p.connect("OTHER_PEER_ID").await;
 ```
 Inspect the connection array received in the update function to check for a new peer connection.
 ```Rust
