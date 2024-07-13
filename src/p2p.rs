@@ -45,29 +45,6 @@ pub struct P2P {
 }
 
 impl P2P {
-    pub fn set_ice_servers(&self, ice_servers: Vec<IceServer>) {
-        let mut inner = self.inner.borrow_mut();
-        inner.ice_servers = ice_servers;
-    }
-
-    pub fn send(&self, other_peer_id: &str, data: &str) {
-        let inner = self.inner.borrow();
-        let other_peer_channel = inner.channels.get(other_peer_id);
-
-        if let Some(channel) = other_peer_channel {
-            channel.send_with_str(data).unwrap();
-        }
-    }
-
-    pub fn send_u8_array(&self, other_peer_id: &str, data: &[u8]) {
-        let inner = self.inner.borrow();
-        let other_peer_channel = inner.channels.get(other_peer_id);
-
-        if let Some(channel) = other_peer_channel {
-            channel.send_with_u8_array(data).unwrap();
-        }
-    }
-
     pub fn new(url: &str) -> Self {
         let ice_servers: Vec<IceServer> = vec![IceServer {
             urls: String::from("stun:stun.l.google.com:19302"),
@@ -94,6 +71,29 @@ impl P2P {
         p2p.listen_to_signaling_messages();
 
         return p2p;
+    }
+
+    pub fn set_ice_servers(&self, ice_servers: Vec<IceServer>) {
+        let mut inner = self.inner.borrow_mut();
+        inner.ice_servers = ice_servers;
+    }
+
+    pub fn send(&self, other_peer_id: &str, data: &str) {
+        let inner = self.inner.borrow();
+        let other_peer_channel = inner.channels.get(other_peer_id);
+
+        if let Some(channel) = other_peer_channel {
+            channel.send_with_str(data).unwrap();
+        }
+    }
+
+    pub fn send_u8_array(&self, other_peer_id: &str, data: &[u8]) {
+        let inner = self.inner.borrow();
+        let other_peer_channel = inner.channels.get(other_peer_id);
+
+        if let Some(channel) = other_peer_channel {
+            channel.send_with_u8_array(data).unwrap();
+        }
     }
 
     fn listen_to_signaling_messages(&mut self) {
@@ -143,8 +143,8 @@ impl P2P {
 
     fn create_connection(&self) -> RtcPeerConnection {
         let mut config = RtcConfiguration::new();
-        let config = config
-            .ice_servers(&serde_wasm_bindgen::to_value(&self.inner.borrow().ice_servers).unwrap());
+        let ice_servers = &self.inner.borrow().ice_servers;
+        let config = config.ice_servers(&serde_wasm_bindgen::to_value(ice_servers).unwrap());
         let connection = RtcPeerConnection::new_with_configuration(&config).unwrap();
         return connection;
     }
@@ -192,13 +192,13 @@ impl P2P {
             self.inner.borrow().socket.send_with_str(&message).unwrap();
         }
 
-        let inner = Rc::clone(&self.inner);
+        let on_data_channel_self = self.clone();
+        let peer_id = self.inner.borrow().id.clone().unwrap();
 
         let on_data_channel =
             Closure::<dyn FnMut(RtcDataChannelEvent)>::new(move |event: RtcDataChannelEvent| {
                 let channel = event.channel();
-                let peer_id = { inner.borrow().id.clone().unwrap() };
-                setup_channel(inner.clone(), channel, peer_id);
+                on_data_channel_self.setup_channel(channel, peer_id.clone());
             });
 
         connection.set_ondatachannel(Some(on_data_channel.as_ref().unchecked_ref()));
@@ -215,15 +215,11 @@ impl P2P {
     }
 
     fn messages(&mut self) -> IntoIter<(String, String)> {
-        std::mem::replace(&mut (*self.inner.borrow_mut()).peer_messages, Vec::new()).into_iter()
+        std::mem::replace(&mut self.inner.borrow_mut().peer_messages, Vec::new()).into_iter()
     }
 
     fn connection_updates(&mut self) -> IntoIter<ConnectionUpdate> {
-        std::mem::replace(
-            &mut (*self.inner.borrow_mut()).connection_states,
-            Vec::new(),
-        )
-        .into_iter()
+        std::mem::replace(&mut self.inner.borrow_mut().connection_states, Vec::new()).into_iter()
     }
 
     pub async fn id(&self) -> String {
@@ -294,7 +290,7 @@ impl P2P {
     pub async fn connect(&mut self, peer_id: &str) {
         let connection = self.create_connection();
         let channel = connection.create_data_channel("channel");
-        setup_channel(Rc::clone(&self.inner), channel, peer_id.to_string());
+        self.setup_channel(channel, peer_id.to_string());
 
         self.send_offer(connection.clone(), peer_id.to_string().clone())
             .await;
@@ -304,53 +300,56 @@ impl P2P {
             .connections
             .insert(peer_id.to_string(), connection);
     }
-}
 
-fn setup_channel(p2p_inner: Rc<RefCell<P2PInner>>, channel: RtcDataChannel, peer_id: String) {
-    // Channel on open
-    let inner_on_open = Rc::clone(&p2p_inner);
-    let on_open_peer_id = peer_id.to_string();
+    fn setup_channel(&self, channel: RtcDataChannel, peer_id: String) {
+        let p2p_inner = Rc::clone(&self.inner);
 
-    let on_open = Closure::<dyn FnMut()>::new(move || {
-        inner_on_open
+        // Channel on open
+        let inner_on_open = Rc::clone(&p2p_inner);
+        let on_open_peer_id = peer_id.to_string();
+
+        let on_open = Closure::<dyn FnMut()>::new(move || {
+            inner_on_open
+                .borrow_mut()
+                .connection_states
+                .push(ConnectionUpdate::Connected(on_open_peer_id.clone()));
+        });
+
+        // Channel on close
+        let inner_on_close = Rc::clone(&p2p_inner);
+        let on_close_peer_id = peer_id.to_string();
+
+        let on_close = Closure::<dyn FnMut()>::new(move || {
+            inner_on_close
+                .borrow_mut()
+                .connection_states
+                .push(ConnectionUpdate::Disconnected(on_close_peer_id.clone()));
+        });
+
+        // Channel on message
+        let inner_on_message = Rc::clone(&p2p_inner);
+        let on_message_peer_id = peer_id.to_string();
+
+        let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
+            inner_on_message.borrow_mut().peer_messages.push((
+                on_message_peer_id.clone(),
+                message.data().as_string().unwrap(),
+            ));
+        });
+
+        // Adds event listeners to channel
+        channel.set_onopen(Some(on_open.as_ref().unchecked_ref()));
+        channel.set_onclose(Some(on_close.as_ref().unchecked_ref()));
+        channel.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+
+        on_message.forget();
+        on_open.forget();
+        on_close.forget();
+
+        // Add channel to channels
+        p2p_inner
             .borrow_mut()
-            .connection_states
-            .push(ConnectionUpdate::Connected(on_open_peer_id.clone()));
-    });
-
-    // Channel on close
-    let inner_on_close = Rc::clone(&p2p_inner);
-    let on_close_peer_id = peer_id.to_string();
-
-    let on_close = Closure::<dyn FnMut()>::new(move || {
-        inner_on_close
-            .borrow_mut()
-            .connection_states
-            .push(ConnectionUpdate::Disconnected(on_close_peer_id.clone()));
-    });
-
-    // Channel on message
-    let inner_on_message = Rc::clone(&p2p_inner);
-    let on_message_peer_id = peer_id.to_string();
-
-    let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-        inner_on_message.borrow_mut().peer_messages.push((
-            on_message_peer_id.clone(),
-            message.data().as_string().unwrap(),
-        ));
-    });
-
-    // Adds event listeners to channel
-    channel.set_onopen(Some(on_open.as_ref().unchecked_ref()));
-    channel.set_onclose(Some(on_close.as_ref().unchecked_ref()));
-    channel.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
-
-    on_message.forget();
-    on_open.forget();
-    on_close.forget();
-
-    p2p_inner
-        .borrow_mut()
-        .channels
-        .insert(peer_id.clone(), channel.clone());
+            .channels
+            .insert(peer_id.clone(), channel.clone());
+    }
 }
