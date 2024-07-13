@@ -12,7 +12,7 @@
 </div>
 
 ## Introduction
-This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC. In the following example, we will connect to another peer and send it "Hello":
+This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC. In the following example, we will connect to another peer and send it `Hello world`:
 ```Rust
 use wasm_p2p::{wasm_bindgen_futures, P2P};
 
@@ -23,7 +23,7 @@ fn main() {
 async fn main_async() {
     let p2p = P2P::new("wss://signaling.luisherasme.com").await;
     let peer = p2p.connect("other-peer-id").await;
-    peer.send("Hello!");
+    peer.send("Hello world");
 }
 ```
 ## Installation
