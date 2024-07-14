@@ -61,7 +61,7 @@ let connections = p2p.receive_connections();
 ```
 
 #### Receive meesages
-To receive messages from the other peers that are connected to you, you can call the update method:
+To receive messages from the other peers that are connected to you, you can call the `receive` method:
 ```Rust
 let messages = connection.receive();
 ```
