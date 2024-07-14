@@ -53,7 +53,7 @@ let id = p2p.id();
 #### Connections
 You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
 ```Rust
-let peer = p2p.connect("OTHER_PEER_ID").await;
+let connection = p2p.connect("OTHER_PEER_ID").await;
 ```
 You can get all the new connections by calling `p2p.receive_connections`:
 ```Rust
@@ -63,7 +63,7 @@ let connections = p2p.receive_connections();
 #### Receive meesages
 To receive messages from the other peers that are connected to you, you can call the update method:
 ```Rust
-let (messages, connections) = p2p.update().await;
+let messages = connection.receive();
 ```
 
 #### Send message
