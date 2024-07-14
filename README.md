@@ -49,6 +49,17 @@ The signaling server assigns a random, unique ID to each peer:
 ```Rust
 let id = p2p.id().await;
 ```
+
+#### Connections
+You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
+```Rust
+let peer = p2p.connect("OTHER_PEER_ID").await;
+```
+You can get all the new connections by calling `p2p.receive_connections`:
+```Rust
+let connections = p2p.receive_connections();
+```
+
 #### Receive meesages
 To receive messages from the other peers that are connected to you, you can call the update method:
 ```Rust
@@ -60,27 +71,6 @@ To send a message to another peer you have to use the `send` method:
 ```Rust
 let data = "EXAMPLE DATA YOU CAN SEND ANY &STR";
 peer.send(data);
-```
-
-#### Connections
-You can start a connection by calling `p2p.connect` with the peer ID of the destination peer.
-```Rust
-let peer = p2p.connect("OTHER_PEER_ID").await;
-```
-Inspect the connection array received in the update function to check for a new peer connection.
-```Rust
-let (messages, connections) = p2p.update().await;
-
-for connection in connections {
-    match connection {
-        ConnectionUpdate::Connected(peer_id) => {
-            println!("Peer {} connected", peer_id);
-        }
-        ConnectionUpdate::Disconnected(peer_id) => {
-            println!("Peer {} disconnected", peer_id);
-        }
-    }
-}
 ```
 
 #### Custom ICE Servers
