@@ -1,3 +1,4 @@
+use std::vec::IntoIter;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
@@ -19,6 +20,7 @@ struct P2PInner {
     ice_servers: Vec<IceServer>,
 }
 
+#[derive(Clone)]
 pub struct P2P {
     inner: Rc<RefCell<P2PInner>>,
 }
@@ -40,8 +42,8 @@ impl P2P {
         return signaling;
     }
 
-    pub async fn receive_connections(&self) -> Vec<P2PConnection> {
-        std::mem::replace(&mut self.inner.borrow_mut().new_connections, Vec::new())
+    pub async fn receive_connections(&self) -> IntoIter<P2PConnection> {
+        std::mem::replace(&mut self.inner.borrow_mut().new_connections, Vec::new()).into_iter()
     }
 
     pub fn new_connection(&self, peer_id: &str) {
@@ -61,6 +63,10 @@ impl P2P {
         let mut connection = P2PConnection::new(peer_id, self.clone());
         let offer = connection.create_offer().await;
         self.send(offer);
+        self.inner
+            .borrow_mut()
+            .connections
+            .insert(peer_id.to_string(), connection.clone());
 
         loop {
             if connection.ready_state().await == RtcDataChannelState::Open {
@@ -73,7 +79,7 @@ impl P2P {
         return connection;
     }
 
-    pub async fn id(&mut self) -> String {
+    pub async fn id(&self) -> String {
         if let Some(id) = &self.inner.borrow_mut().id {
             return id.to_string();
         }

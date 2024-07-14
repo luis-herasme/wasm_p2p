@@ -14,6 +14,7 @@ use web_sys::{
     RtcSessionDescriptionInit,
 };
 
+#[derive(Clone)]
 pub struct P2PConnection {
     pub id: String,
     connection: RtcPeerConnection,
@@ -104,6 +105,7 @@ impl P2PConnection {
 
     pub async fn create_offer(&mut self) -> ClientMessage {
         let channel = self.connection.create_data_channel("channel");
+        *self.channel.borrow_mut() = Some(channel.clone());
         let messages = Rc::clone(&self.messages);
 
         P2PConnection::listen_to_channel_messages(channel.clone(), messages.clone());
