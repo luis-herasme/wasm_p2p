@@ -3,8 +3,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{MessageEvent, RtcDataChannelState, WebSocket};
+use web_sys::{MessageEvent, RtcDataChannelState};
 
+use crate::signaling::Signaling;
 use crate::{
     ice_server::IceServer,
     messages::{ClientMessage, ServerAnswer, ServerMessage, ServerOffer},
@@ -13,8 +14,7 @@ use crate::{
 };
 
 struct P2PInner {
-    id: Option<String>,
-    socket: WebSocket,
+    signaling: Signaling,
     connections: HashMap<String, P2PConnection>,
     new_connections: Vec<P2PConnection>,
     ice_servers: Vec<IceServer>,
@@ -27,19 +27,20 @@ pub struct P2P {
 
 impl P2P {
     pub async fn new(url: &str) -> P2P {
-        let signaling = P2P {
+        let signaling = Signaling::new(url).await;
+
+        let p2p = P2P {
             inner: Rc::new(RefCell::new(P2PInner {
-                id: None,
-                socket: P2P::create_socket(url).await,
+                signaling,
                 connections: HashMap::new(),
                 ice_servers: vec![IceServer::from("stun:stun.l.google.com:19302")],
                 new_connections: Vec::new(),
             })),
         };
 
-        signaling.listen();
+        p2p.listen();
 
-        return signaling;
+        return p2p;
     }
 
     pub fn receive_connections(&self) -> IntoIter<P2PConnection> {
@@ -79,32 +80,8 @@ impl P2P {
         return connection;
     }
 
-    pub async fn id(&self) -> String {
-        if let Some(id) = &self.inner.borrow_mut().id {
-            return id.to_string();
-        }
-
-        self.send(ClientMessage::GetMyID);
-
-        loop {
-            if let Some(id) = &self.inner.borrow_mut().id {
-                return id.to_string();
-            }
-
-            sleep(0).await;
-        }
-    }
-
-    async fn create_socket(url: &str) -> WebSocket {
-        let socket = WebSocket::new(url).unwrap();
-
-        loop {
-            if socket.ready_state() == WebSocket::OPEN {
-                return socket;
-            }
-
-            sleep(0).await;
-        }
+    pub fn id(&self) -> String {
+        self.inner.borrow().signaling.id()
     }
 
     pub fn clone(&self) -> P2P {
@@ -126,6 +103,7 @@ impl P2P {
 
         self.inner
             .borrow_mut()
+            .signaling
             .socket
             .set_onmessage(Some(on_message_callback.as_ref().unchecked_ref()));
 
@@ -137,7 +115,7 @@ impl P2P {
 
         spawn_local(async move {
             match message {
-                ServerMessage::ID(data) => cloned.inner.borrow_mut().id = Some(data.id),
+                ServerMessage::ID(_) => {}
                 ServerMessage::Offer(offer) => cloned.handle_offer(offer).await,
                 ServerMessage::Answer(answer) => cloned.handle_answer(answer).await,
             }
@@ -146,7 +124,12 @@ impl P2P {
 
     fn send(&self, message: ClientMessage) {
         let json = serde_json::to_string(&message).unwrap();
-        self.inner.borrow_mut().socket.send_with_str(&json).unwrap();
+        self.inner
+            .borrow_mut()
+            .signaling
+            .socket
+            .send_with_str(&json)
+            .unwrap();
     }
 
     async fn handle_offer(&mut self, offer: ServerOffer) {
