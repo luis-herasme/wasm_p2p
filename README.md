@@ -84,15 +84,16 @@ for connection in connections {
 ```
 
 #### Custom ICE Servers
+You can set your own ICE servers:
 
 ```Rust
 use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P, IceServer};
 
 fn main() {
-    wasm_bindgen_futures::spawn_local(init());
+    wasm_bindgen_futures::spawn_local(main_async());
 }
 
-async fn init() {
+async fn main_async() {
     let mut p2p = P2P::new("wss://signaling.luisherasme.com");
 
     let ice_servers = vec![IceServer {
@@ -106,5 +107,20 @@ async fn init() {
 }
 ```
 
+Furthermore, you can create an ICE server from a `&str`:
+
+```Rust
+use wasm_p2p::{wasm_bindgen_futures, ConnectionUpdate, P2P, IceServer};
+
+fn main() {
+    wasm_bindgen_futures::spawn_local(main_async());
+}
+
+async fn main_async() {
+    let mut p2p = P2P::new("wss://signaling.luisherasme.com");
+    let ice_servers = vec![IceServer::from("stun:stun.l.google.com:19302")];
+    p2p.set_ice_servers(ice_servers);
+}
+```
 ## Examples
 - P2P chat. [Demo](https://p2pexample.luisherasme.com/), [Repository](https://github.com/luis-herasme/p2p-example).
