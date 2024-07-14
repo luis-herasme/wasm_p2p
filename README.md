@@ -47,7 +47,7 @@ In the previous example, we used `wss://signaling.luisherasme.com` as the signal
 #### Peer ID
 The signaling server assigns a random, unique ID to each peer:
 ```Rust
-let id = p2p.id;
+let id = p2p.id().await;
 ```
 #### Receive meesages
 To receive messages from the other peers that are connected to you, you can call the update method:
