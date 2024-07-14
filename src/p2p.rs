@@ -42,7 +42,7 @@ impl P2P {
         return signaling;
     }
 
-    pub async fn receive_connections(&self) -> IntoIter<P2PConnection> {
+    pub fn receive_connections(&self) -> IntoIter<P2PConnection> {
         std::mem::replace(&mut self.inner.borrow_mut().new_connections, Vec::new()).into_iter()
     }
 
