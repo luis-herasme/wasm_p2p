@@ -30,6 +30,10 @@ impl P2PConnection {
         self.channel.send_with_str(data)
     }
 
+    pub fn send_u8_array(&self, data: &[u8]) -> Result<(), JsValue> {
+        self.channel.send_with_u8_array(data)
+    }
+
     pub fn receive(&self) -> IntoIter<String> {
         return std::mem::replace(&mut *self.messages.borrow_mut(), Vec::new()).into_iter();
     }
