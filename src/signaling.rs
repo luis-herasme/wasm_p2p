@@ -17,9 +17,9 @@ pub struct Signaling {
 }
 
 impl Signaling {
-    pub async fn new(url: &str) -> Signaling {
-        let socket = Signaling::create_socket(url).await;
-        let id = Signaling::get_signaling_id(&socket).await;
+    pub async fn new(url: &str) -> Result<Signaling, JsValue> {
+        let socket = Signaling::create_socket(url).await?;
+        let id = Signaling::get_signaling_id(&socket).await?;
 
         let signaling = Signaling {
             id,
@@ -30,22 +30,22 @@ impl Signaling {
 
         signaling.listen();
 
-        return signaling;
+        return Ok(signaling);
     }
 
     pub fn id(&self) -> String {
         self.id.clone()
     }
 
-    pub fn send_offer(&mut self, peer_id: &str, sdp: &str) {
-        self.send(ClientMessage::Offer(ClientOffer {
+    pub fn send_offer(&mut self, peer_id: &str, sdp: &str) -> Result<(), JsValue> {
+        return self.send(ClientMessage::Offer(ClientOffer {
             to: peer_id.to_string(),
             sdp: sdp.to_string(),
         }));
     }
 
-    pub fn send_answer(&mut self, peer_id: &str, sdp: &str) {
-        self.send(ClientMessage::Answer(ClientAnswer {
+    pub fn send_answer(&mut self, peer_id: &str, sdp: &str) -> Result<(), JsValue> {
+        return self.send(ClientMessage::Answer(ClientAnswer {
             to: peer_id.to_string(),
             sdp: sdp.to_string(),
         }));
@@ -61,21 +61,21 @@ impl Signaling {
         }
     }
 
-    pub async fn receive_offer(&self) -> Option<ServerOffer> {
+    pub fn receive_offer(&self) -> Option<ServerOffer> {
         self.offers.borrow_mut().pop()
     }
 
-    fn send(&self, message: ClientMessage) {
+    fn send(&self, message: ClientMessage) -> Result<(), JsValue> {
         let json = serde_json::to_string(&message).unwrap();
-        self.socket.send_with_str(&json).unwrap();
+        return self.socket.send_with_str(&json);
     }
 
-    async fn create_socket(url: &str) -> WebSocket {
-        let socket = WebSocket::new(url).unwrap();
+    async fn create_socket(url: &str) -> Result<WebSocket, JsValue> {
+        let socket = WebSocket::new(url)?;
 
         loop {
             if socket.ready_state() == WebSocket::OPEN {
-                return socket;
+                return Ok(socket);
             }
 
             sleep(0).await;
@@ -87,17 +87,17 @@ impl Signaling {
         let answers = Rc::clone(&self.answers);
 
         let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-            let message = message.data().as_string().unwrap();
-
-            if let Ok(message) = serde_json::from_str::<ServerMessage>(&message) {
-                match message {
-                    ServerMessage::Offer(offer) => {
-                        offers.borrow_mut().push(offer);
+            if let Some(message) = message.data().as_string() {
+                if let Ok(message) = serde_json::from_str::<ServerMessage>(&message) {
+                    match message {
+                        ServerMessage::Offer(offer) => {
+                            offers.borrow_mut().push(offer);
+                        }
+                        ServerMessage::Answer(answer) => {
+                            answers.borrow_mut().insert(answer.from.clone(), answer);
+                        }
+                        ServerMessage::ID(_) => {}
                     }
-                    ServerMessage::Answer(answer) => {
-                        answers.borrow_mut().insert(answer.from.clone(), answer);
-                    }
-                    ServerMessage::ID(_) => {}
                 }
             }
         });
@@ -107,18 +107,19 @@ impl Signaling {
         callback.forget();
     }
 
-    async fn get_signaling_id(socket: &WebSocket) -> String {
+    async fn get_signaling_id(socket: &WebSocket) -> Result<String, JsValue> {
         let get_my_id = serde_json::to_string(&ClientMessage::GetMyID).unwrap();
-        socket.send_with_str(&get_my_id).unwrap();
+        socket.send_with_str(&get_my_id)?;
 
         let id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
         let id_callback = Rc::clone(&id);
 
         let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-            let message = message.data().as_string().unwrap();
-            if let Ok(message) = serde_json::from_str::<ServerMessage>(&message) {
-                if let ServerMessage::ID(data) = message {
-                    (*id_callback.borrow_mut()) = Some(data.id);
+            if let Some(message) = message.data().as_string() {
+                if let Ok(message) = serde_json::from_str::<ServerMessage>(&message) {
+                    if let ServerMessage::ID(data) = message {
+                        (*id_callback.borrow_mut()) = Some(data.id);
+                    }
                 }
             }
         });
@@ -128,7 +129,7 @@ impl Signaling {
 
         loop {
             if let Some(id) = id.take() {
-                return id;
+                return Ok(id);
             }
 
             sleep(0).await

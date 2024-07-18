@@ -20,29 +20,25 @@ pub enum SDP {
 }
 
 impl RtcPeerConnection {
-    pub fn new(ice_servers: &Vec<IceServer>) -> RtcPeerConnection {
+    pub fn new(ice_servers: &Vec<IceServer>) -> Result<RtcPeerConnection, JsValue> {
         let mut config = RtcConfiguration::new();
-        let config = config.ice_servers(&serde_wasm_bindgen::to_value(ice_servers).unwrap());
-        let connection = OriginalRtcPeerConnection::new_with_configuration(&config).unwrap();
-
-        RtcPeerConnection { connection }
+        let config = config.ice_servers(&serde_wasm_bindgen::to_value(ice_servers)?);
+        let connection = OriginalRtcPeerConnection::new_with_configuration(&config)?;
+        Ok(RtcPeerConnection { connection })
     }
 
     pub fn create_data_channel(&self, label: &str) -> RtcDataChannel {
         self.connection.create_data_channel(label)
     }
 
-    pub fn local_sdp(&self) -> String {
-        let local_description = self.connection.local_description().unwrap();
-        return local_description.sdp();
-    }
-
-    pub async fn set_local_sdp(&self, sdp: RtcSessionDescriptionInit) {
-        self.set_local_description(sdp).await;
+    pub async fn set_local_sdp(&self, sdp: RtcSessionDescriptionInit) -> Result<String, JsValue> {
+        self.set_local_description(sdp).await?;
         self.wait_ice_gathering_complete().await;
+        let local_description = self.connection.local_description().unwrap();
+        return Ok(local_description.sdp());
     }
 
-    pub async fn set_remote_sdp(&self, sdp: String, sdp_type: SDP) {
+    pub async fn set_remote_sdp(&self, sdp: String, sdp_type: SDP) -> Result<JsValue, JsValue> {
         let sdp_type = match sdp_type {
             SDP::Answer => RtcSdpType::Answer,
             SDP::Offer => RtcSdpType::Offer,
@@ -50,19 +46,18 @@ impl RtcPeerConnection {
 
         let mut session_description = RtcSessionDescriptionInit::new(sdp_type);
         session_description.sdp(&sdp);
-        self.set_remote_description(session_description).await;
+        return self.set_remote_description(session_description).await;
     }
 
-    pub async fn create_sdp(&self, sdp_type: SDP) -> RtcSessionDescriptionInit {
+    pub async fn create_sdp(&self, sdp_type: SDP) -> Result<RtcSessionDescriptionInit, JsValue> {
         let create_sdp_promise = match sdp_type {
             SDP::Answer => self.connection.create_answer(),
             SDP::Offer => self.connection.create_offer(),
         };
 
-        let js_value = JsFuture::from(create_sdp_promise).await.unwrap();
+        let js_value = JsFuture::from(create_sdp_promise).await?;
 
-        let sdp = &Reflect::get(&js_value, &JsValue::from_str("sdp"))
-            .unwrap()
+        let sdp = &Reflect::get(&js_value, &JsValue::from_str("sdp"))?
             .as_string()
             .unwrap();
 
@@ -73,19 +68,21 @@ impl RtcPeerConnection {
 
         let mut session_description = RtcSessionDescriptionInit::new(sdp_type);
         session_description.sdp(sdp);
-        return session_description;
+        return Ok(session_description);
     }
 
-    pub async fn set_remote_description(&self, session_description: RtcSessionDescriptionInit) {
-        JsFuture::from(self.connection.set_remote_description(&session_description))
-            .await
-            .unwrap();
+    pub async fn set_remote_description(
+        &self,
+        session_description: RtcSessionDescriptionInit,
+    ) -> Result<JsValue, JsValue> {
+        return JsFuture::from(self.connection.set_remote_description(&session_description)).await;
     }
 
-    pub async fn set_local_description(&self, session_description: RtcSessionDescriptionInit) {
-        JsFuture::from(self.connection.set_local_description(&session_description))
-            .await
-            .unwrap();
+    pub async fn set_local_description(
+        &self,
+        session_description: RtcSessionDescriptionInit,
+    ) -> Result<JsValue, JsValue> {
+        return JsFuture::from(self.connection.set_local_description(&session_description)).await;
     }
 
     pub async fn wait_ice_gathering_complete(&self) {

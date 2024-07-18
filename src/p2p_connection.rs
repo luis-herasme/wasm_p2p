@@ -37,8 +37,9 @@ impl P2PConnection {
     fn listen_to_channel_messages(&self) {
         let messages = Rc::clone(&self.messages);
         let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-            let message = message.data().as_string().unwrap();
-            messages.borrow_mut().push(message);
+            if let Some(message) = message.data().as_string() {
+                messages.borrow_mut().push(message);
+            }
         });
 
         self.channel
