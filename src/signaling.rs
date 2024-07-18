@@ -51,7 +51,7 @@ impl Signaling {
         }));
     }
 
-    pub async fn receive_sdp_from(&mut self, peer_id: &str) -> String {
+    pub async fn receive_answer_from(&mut self, peer_id: &str) -> String {
         loop {
             if let Some(answer) = self.answers.borrow_mut().remove(peer_id) {
                 return answer.sdp;

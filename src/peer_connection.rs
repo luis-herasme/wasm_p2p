@@ -14,6 +14,11 @@ pub struct RtcPeerConnection {
     connection: OriginalRtcPeerConnection,
 }
 
+pub enum SDP {
+    Offer,
+    Answer,
+}
+
 impl RtcPeerConnection {
     pub fn new(ice_servers: &Vec<IceServer>) -> RtcPeerConnection {
         let mut config = RtcConfiguration::new();
@@ -27,36 +32,33 @@ impl RtcPeerConnection {
         self.connection.create_data_channel(label)
     }
 
-    pub async fn create_local_offer(&self) -> Option<String> {
-        let offer = self.create_offer().await;
-        self.set_local_description(offer).await;
-        self.wait_ice_gathering_complete().await;
-        let local_description = self.connection.local_description()?;
-        return Some(local_description.sdp());
+    pub fn local_sdp(&self) -> String {
+        let local_description = self.connection.local_description().unwrap();
+        return local_description.sdp();
     }
 
-    pub async fn create_local_answer(&self) -> Option<String> {
-        let answer = self.create_answer().await;
-        self.set_local_description(answer).await;
+    pub async fn set_local_sdp(&self, sdp: RtcSessionDescriptionInit) {
+        self.set_local_description(sdp).await;
         self.wait_ice_gathering_complete().await;
-        let local_description = self.connection.local_description()?;
-        return Some(local_description.sdp());
     }
 
-    pub async fn set_remote_answer(&self, sdp: String) {
-        let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
+    pub async fn set_remote_sdp(&self, sdp: String, sdp_type: SDP) {
+        let sdp_type = match sdp_type {
+            SDP::Answer => RtcSdpType::Answer,
+            SDP::Offer => RtcSdpType::Offer,
+        };
+
+        let mut session_description = RtcSessionDescriptionInit::new(sdp_type);
         session_description.sdp(&sdp);
         self.set_remote_description(session_description).await;
     }
 
-    pub async fn set_remote_offer(&self, sdp: String) {
-        let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
-        session_description.sdp(&sdp);
-        self.set_remote_description(session_description).await;
-    }
+    pub async fn create_sdp(&self, sdp_type: SDP) -> RtcSessionDescriptionInit {
+        let create_sdp_promise = match sdp_type {
+            SDP::Answer => self.connection.create_answer(),
+            SDP::Offer => self.connection.create_offer(),
+        };
 
-    pub async fn create_offer(&self) -> RtcSessionDescriptionInit {
-        let create_sdp_promise = self.connection.create_offer();
         let js_value = JsFuture::from(create_sdp_promise).await.unwrap();
 
         let sdp = &Reflect::get(&js_value, &JsValue::from_str("sdp"))
@@ -64,21 +66,12 @@ impl RtcPeerConnection {
             .as_string()
             .unwrap();
 
-        let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
-        session_description.sdp(sdp);
-        return session_description;
-    }
+        let sdp_type = match sdp_type {
+            SDP::Answer => RtcSdpType::Answer,
+            SDP::Offer => RtcSdpType::Offer,
+        };
 
-    pub async fn create_answer(&self) -> RtcSessionDescriptionInit {
-        let create_sdp_promise = self.connection.create_answer();
-        let js_value = JsFuture::from(create_sdp_promise).await.unwrap();
-
-        let sdp = &Reflect::get(&js_value, &JsValue::from_str("sdp"))
-            .unwrap()
-            .as_string()
-            .unwrap();
-
-        let mut session_description = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
+        let mut session_description = RtcSessionDescriptionInit::new(sdp_type);
         session_description.sdp(sdp);
         return session_description;
     }

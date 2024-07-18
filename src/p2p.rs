@@ -1,5 +1,5 @@
 use crate::p2p_connection::P2PConnection;
-use crate::peer_connection::RtcPeerConnection;
+use crate::peer_connection::{RtcPeerConnection, SDP};
 use crate::signaling::Signaling;
 use crate::{ice_server::IceServer, peer_connection::wait_channel_open};
 
@@ -31,19 +31,22 @@ impl P2P {
         // 2. Create channel
         let channel = connection.create_data_channel("channel");
 
-        // 3. Create local SDP (offer)
-        let local_sdp = connection.create_local_offer().await?;
+        // 3. Create SDP (offer)
+        let sdp = connection.create_sdp(SDP::Offer).await;
 
-        // 4. Send SDP (offer) to the other peer
-        self.signaling.send_offer(peer_id, &local_sdp);
+        // 4. Set SDP to local
+        connection.set_local_sdp(sdp).await;
 
-        // 5. Waif for the SDP (answer) from the other peer
-        let remote_sdp = self.signaling.receive_sdp_from(peer_id).await;
+        // 5. Send SDP (offer) to the other peer
+        self.signaling.send_offer(peer_id, &connection.local_sdp());
 
-        // 6. Set the remote SDP (answer) to the other peer SDP
-        connection.set_remote_answer(remote_sdp).await;
+        // 6. Waif for the SDP (answer) from the other peer
+        let remote_sdp = self.signaling.receive_answer_from(peer_id).await;
 
-        // 7. Wait for channel open
+        // 7. Set the remote SDP (answer) to the other peer SDP
+        connection.set_remote_sdp(remote_sdp, SDP::Answer).await;
+
+        // 8. Wait for channel open
         wait_channel_open(&channel).await;
 
         return Some(P2PConnection::new(peer_id.to_string(), channel));
@@ -57,18 +60,22 @@ impl P2P {
         let connection = RtcPeerConnection::new(&self.ice_servers);
 
         // 3. Set the remote SDP to the other peer SDP (offer)
-        connection.set_remote_offer(offer.sdp).await;
+        connection.set_remote_sdp(offer.sdp, SDP::Offer).await;
 
         // 4. Create local SDP (answer)
-        let local_sdp = connection.create_local_answer().await?;
+        let sdp = connection.create_sdp(SDP::Answer).await;
 
-        // 5. Send the SDP (answer) to the other peer
-        self.signaling.send_answer(&offer.from, &local_sdp);
+        // 5. Set SDP to local
+        connection.set_local_sdp(sdp).await;
 
-        // 6. Wait for the channel
+        // 6. Send the SDP (answer) to the other peer
+        self.signaling
+            .send_answer(&offer.from, &connection.local_sdp());
+
+        // 7. Wait for the channel
         let channel = connection.on_channel().await;
 
-        // 7. Wait for channel open
+        // 8. Wait for channel open
         wait_channel_open(&channel).await;
 
         return Some(P2PConnection::new(offer.from, channel));
