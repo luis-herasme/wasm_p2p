@@ -202,7 +202,7 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "wasm_p2p"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "console_error_panic_hook",
  "serde",
