@@ -34,7 +34,11 @@ impl RtcPeerConnection {
     pub async fn set_local_sdp(&self, sdp: RtcSessionDescriptionInit) -> Result<String, JsValue> {
         self.set_local_description(sdp).await?;
         self.wait_ice_gathering_complete().await;
-        let local_description = self.connection.local_description().unwrap();
+
+        let Some(local_description) = self.connection.local_description() else {
+            return Err("No local description".into());
+        };
+
         return Ok(local_description.sdp());
     }
 
