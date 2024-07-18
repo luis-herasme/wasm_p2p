@@ -10,7 +10,7 @@ pub struct P2PConnection {
 }
 
 impl P2PConnection {
-    pub fn new(id: String, channel: RtcDataChannel) -> P2PConnection {
+    pub(crate) fn new(id: String, channel: RtcDataChannel) -> P2PConnection {
         let connection = P2PConnection {
             id,
             channel,
