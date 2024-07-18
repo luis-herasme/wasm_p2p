@@ -1,28 +1,11 @@
-use std::vec::IntoIter;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::{MessageEvent, RtcDataChannelState};
-
+use crate::p2p_connection::P2PConnection;
+use crate::peer_connection::RtcPeerConnection;
 use crate::signaling::Signaling;
-use crate::{
-    ice_server::IceServer,
-    messages::{ClientMessage, ServerAnswer, ServerMessage, ServerOffer},
-    p2p_connection::{P2PConnection, SDP},
-    utils::sleep,
-};
+use crate::{ice_server::IceServer, peer_connection::wait_channel_open};
 
-struct P2PInner {
-    signaling: Signaling,
-    connections: HashMap<String, P2PConnection>,
-    new_connections: Vec<P2PConnection>,
-    ice_servers: Vec<IceServer>,
-}
-
-#[derive(Clone)]
 pub struct P2P {
-    inner: Rc<RefCell<P2PInner>>,
+    signaling: Signaling,
+    ice_servers: Vec<IceServer>,
 }
 
 impl P2P {
@@ -30,122 +13,64 @@ impl P2P {
         let signaling = Signaling::new(url).await;
 
         let p2p = P2P {
-            inner: Rc::new(RefCell::new(P2PInner {
-                signaling,
-                connections: HashMap::new(),
-                ice_servers: vec![IceServer::from("stun:stun.l.google.com:19302")],
-                new_connections: Vec::new(),
-            })),
+            signaling,
+            ice_servers: vec![IceServer::from("stun:stun.l.google.com:19302")],
         };
-
-        p2p.listen();
 
         return p2p;
     }
 
-    pub fn receive_connections(&self) -> IntoIter<P2PConnection> {
-        std::mem::replace(&mut self.inner.borrow_mut().new_connections, Vec::new()).into_iter()
-    }
-
-    pub fn new_connection(&self, peer_id: &str) {
-        let connection = self.inner.borrow_mut().connections.remove(peer_id).unwrap();
-        self.inner.borrow_mut().new_connections.push(connection);
-    }
-
-    pub fn get_ice_servers(&self) -> Vec<IceServer> {
-        self.inner.borrow().ice_servers.clone()
-    }
-
-    pub fn set_ice_servers(&self, ice_server: Vec<IceServer>) {
-        self.inner.borrow_mut().ice_servers = ice_server;
-    }
-
-    pub async fn connect(&self, peer_id: &str) -> P2PConnection {
-        let mut connection = P2PConnection::new(peer_id, self.clone());
-        let offer = connection.create_offer().await;
-        self.send(offer);
-        self.inner
-            .borrow_mut()
-            .connections
-            .insert(peer_id.to_string(), connection.clone());
-
-        loop {
-            if connection.ready_state().await == RtcDataChannelState::Open {
-                break;
-            }
-
-            sleep(0).await;
-        }
-
-        return connection;
-    }
-
     pub fn id(&self) -> String {
-        self.inner.borrow().signaling.id()
+        self.signaling.id()
     }
 
-    pub fn clone(&self) -> P2P {
-        P2P {
-            inner: self.inner.clone(),
-        }
+    pub async fn connect(&mut self, peer_id: &str) -> Option<P2PConnection> {
+        // 1. Create Connection
+        let connection = RtcPeerConnection::new(&self.ice_servers);
+
+        // 2. Create channel
+        let channel = connection.create_data_channel("channel");
+
+        // 3. Create local SDP (offer)
+        let local_sdp = connection.create_local_offer().await?;
+
+        // 4. Send SDP (offer) to the other peer
+        self.signaling.send_offer(peer_id, &local_sdp);
+
+        // 5. Waif for the SDP (answer) from the other peer
+        let remote_sdp = self.signaling.receive_sdp_from(peer_id).await;
+
+        // 6. Set the remote SDP (answer) to the other peer SDP
+        connection.set_remote_answer(remote_sdp).await;
+
+        // 7. Wait for channel open
+        wait_channel_open(&channel).await;
+
+        return Some(P2PConnection::new(peer_id.to_string(), channel));
     }
 
-    fn listen(&self) {
-        let mut cloned = self.clone();
+    pub async fn receive_connection(&mut self) -> Option<P2PConnection> {
+        // 1. Receive SDP (offer) from other peer
+        let offer = self.signaling.receive_offer().await?;
 
-        let on_message_callback =
-            Closure::<dyn FnMut(MessageEvent)>::new(move |message: MessageEvent| {
-                let message = message.data().as_string().unwrap();
-                if let Ok(message) = serde_json::from_str::<ServerMessage>(&message) {
-                    cloned.handle_message(message);
-                }
-            });
+        // 2. Create Connection
+        let connection = RtcPeerConnection::new(&self.ice_servers);
 
-        self.inner
-            .borrow_mut()
-            .signaling
-            .socket
-            .set_onmessage(Some(on_message_callback.as_ref().unchecked_ref()));
+        // 3. Set the remote SDP to the other peer SDP (offer)
+        connection.set_remote_offer(offer.sdp).await;
 
-        on_message_callback.forget();
-    }
+        // 4. Create local SDP (answer)
+        let local_sdp = connection.create_local_answer().await?;
 
-    fn handle_message(&mut self, message: ServerMessage) {
-        let mut cloned = self.clone();
+        // 5. Send the SDP (answer) to the other peer
+        self.signaling.send_answer(&offer.from, &local_sdp);
 
-        spawn_local(async move {
-            match message {
-                ServerMessage::ID(_) => {}
-                ServerMessage::Offer(offer) => cloned.handle_offer(offer).await,
-                ServerMessage::Answer(answer) => cloned.handle_answer(answer).await,
-            }
-        });
-    }
+        // 6. Wait for the channel
+        let channel = connection.on_channel().await;
 
-    fn send(&self, message: ClientMessage) {
-        let json = serde_json::to_string(&message).unwrap();
-        self.inner
-            .borrow_mut()
-            .signaling
-            .socket
-            .send_with_str(&json)
-            .unwrap();
-    }
+        // 7. Wait for channel open
+        wait_channel_open(&channel).await;
 
-    async fn handle_offer(&mut self, offer: ServerOffer) {
-        let connection = P2PConnection::new(&offer.from, self.clone());
-        connection.set_remote_sdp(&offer.sdp, SDP::Offer).await;
-        let answer = connection.create_answer().await;
-        self.send(answer);
-        self.inner
-            .borrow_mut()
-            .connections
-            .insert(offer.from, connection);
-    }
-
-    async fn handle_answer(&self, answer: ServerAnswer) {
-        if let Some(connection) = self.inner.borrow_mut().connections.get(&answer.from) {
-            connection.set_remote_sdp(&answer.sdp, SDP::Answer).await;
-        }
+        return Some(P2PConnection::new(offer.from, channel));
     }
 }

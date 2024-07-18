@@ -5,5 +5,6 @@ pub use wasm_bindgen_futures;
 pub mod messages;
 pub mod p2p;
 pub mod p2p_connection;
+mod peer_connection;
 mod signaling;
 pub mod utils;
