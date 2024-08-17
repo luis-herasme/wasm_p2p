@@ -12,7 +12,19 @@
 </div>
 
 ## Introduction
-This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC. In the following example, we will connect to another peer and send it `Hello world`:
+This is a simple peer-to-peer library for Rust + WASM, built on top of WebRTC.
+
+### Features:
+- 🪶 Lightweight
+- 🤝 User-friendly
+- 🚀 Blazing fast
+
+🏗️ Ideal for:
+- 🌐 Decentralized apps
+- 👥 Real-time collaboration
+- 🎮 Browser-based games
+
+In the following example, we will connect to another peer and send it `Hello world`:
 ```Rust
 use wasm_p2p::{wasm_bindgen_futures, P2P};
 
